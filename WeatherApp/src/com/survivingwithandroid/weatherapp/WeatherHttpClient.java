@@ -11,12 +11,23 @@
  */
 package com.survivingwithandroid.weatherapp;
 
-import java.io.BufferedReader;
-import java.io.ByteArrayOutputStream;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
+import org.json.JSONException;
+
+import android.os.AsyncTask;
+import android.os.Bundle;
+import android.app.Activity;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.util.Log;
+import android.view.Menu;
+import android.widget.ImageView;
+import android.widget.TextView;
+
+import com.example.franciscogutierrez.monitoringsmartthermostat.weather.JSONWeatherParser;
+import com.example.franciscogutierrez.monitoringsmartthermostat.R;
+import com.example.franciscogutierrez.monitoringsmartthermostat.weather.WeatherHttpClient;
+import com.example.franciscogutierrez.monitoringsmartthermostat.weather.model.Weather;
+
 /*
  * Copyright (C) 2013 Surviving with Android (http://www.survivingwithandroid.com)
  *
@@ -32,76 +43,82 @@ import java.net.URL;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-public class WeatherHttpClient {
 
-	private static String BASE_URL = "http://api.openweathermap.org/data/2.5/weather?q=";
-	private static String IMG_URL = "http://openweathermap.org/img/w/";
+public class ActivityWeather extends Activity {
 
+	private TextView cityText;
+	private TextView condDescr;
+	private TextView temp;
+	private TextView press;
+	private TextView windSpeed;
+	private TextView windDeg;
 	
-	public String getWeatherData(String location) {
-		HttpURLConnection con = null ;
-		InputStream is = null;
+	private TextView hum;
+	private ImageView imgView;
+	
+	@Override
+	protected void onCreate(Bundle savedInstanceState) {
+		super.onCreate(savedInstanceState);
+		setContentView(R.layout.activity_weather);
+		String city = "London,UK";
+		
+		cityText = (TextView) findViewById(R.id.cityText);
+		condDescr = (TextView) findViewById(R.id.condDescr);
+		temp = (TextView) findViewById(R.id.temp);
+		hum = (TextView) findViewById(R.id.hum);
+		press = (TextView) findViewById(R.id.press);
+		windSpeed = (TextView) findViewById(R.id.windSpeed);
+		windDeg = (TextView) findViewById(R.id.windDeg);
+		imgView = (ImageView) findViewById(R.id.condIcon);
+		
+		JSONWeatherTask task = new JSONWeatherTask();
+		task.execute(new String[]{city});
+	}
 
-		try {
-			con = (HttpURLConnection) ( new URL(BASE_URL + location)).openConnection();
-			con.setRequestMethod("GET");
-			con.setDoInput(true);
-			con.setDoOutput(true);
-			con.connect();
-			
-			// Let's read the response
-			StringBuffer buffer = new StringBuffer();
-			is = con.getInputStream();
-			BufferedReader br = new BufferedReader(new InputStreamReader(is));
-			String line = null;
-			while (  (line = br.readLine()) != null )
-				buffer.append(line + "\r\n");
-			
-			is.close();
-			con.disconnect();
-			return buffer.toString();
-	    }
-		catch(Throwable t) {
-			t.printStackTrace();
-		}
-		finally {
-			try { is.close(); } catch(Throwable t) {}
-			try { con.disconnect(); } catch(Throwable t) {}
-		}
-
-		return null;
-				
+	@Override
+	public boolean onCreateOptionsMenu(Menu menu) {
+		// Inflate the menu; this adds items to the action bar if it is present.
+		getMenuInflater().inflate(R.menu.main, menu);
+		return true;
 	}
 	
-	public byte[] getImage(String code) {
-		HttpURLConnection con = null ;
-		InputStream is = null;
-		try {
-			con = (HttpURLConnection) ( new URL(IMG_URL + code)).openConnection();
-			con.setRequestMethod("GET");
-			con.setDoInput(true);
-			con.setDoOutput(true);
-			con.connect();
-			
-			// Let's read the response
-			is = con.getInputStream();
-			byte[] buffer = new byte[1024];
-			ByteArrayOutputStream baos = new ByteArrayOutputStream();
-			
-			while ( is.read(buffer) != -1)
-				baos.write(buffer);
-			
-			return baos.toByteArray();
-	    }
-		catch(Throwable t) {
-			t.printStackTrace();
-		}
-		finally {
-			try { is.close(); } catch(Throwable t) {}
-			try { con.disconnect(); } catch(Throwable t) {}
-		}
-		
-		return null;
-		
+	private class JSONWeatherTask extends AsyncTask<String, Void, Weather> {
+
+		private final String TAG = JSONWeatherTask.class.getSimpleName();
+
+		@Override
+		protected Weather doInBackground(String... params) {
+			Weather weather = new Weather();
+			String data = new WeatherHttpClient().getWeatherData(params[0]);
+
+			try {
+				Log.e(TAG, data);
+				weather = JSONWeatherParser.getWeather(data);
+				// Let's retrieve the icon
+				weather.iconData = new WeatherHttpClient().getImage(weather.currentCondition.getIcon());
+			}
+			catch (JSONException e) {
+				e.printStackTrace();
+			}
+			return weather;
 	}
+		
+	@Override
+		protected void onPostExecute(Weather weather) {			
+			super.onPostExecute(weather);
+			
+			if (weather.iconData != null && weather.iconData.length > 0) {
+				Bitmap img = BitmapFactory.decodeByteArray(weather.iconData, 0, weather.iconData.length); 
+				imgView.setImageBitmap(img);
+			}
+			
+			cityText.setText(weather.location.getCity() + "," + weather.location.getCountry());
+			condDescr.setText(weather.currentCondition.getCondition() + "(" + weather.currentCondition.getDescr() + ")");
+			temp.setText("" + Math.round((weather.temperature.getTemp() - 273.15)) + "ºC");
+			hum.setText("" + weather.currentCondition.getHumidity() + "%");
+			press.setText("" + weather.currentCondition.getPressure() + " hPa");
+			windSpeed.setText("" + weather.wind.getSpeed() + " mps");
+			windDeg.setText("" + weather.wind.getDeg() + "º");
+		}
+  }
 }
